@@ -1,0 +1,28 @@
+---
+// One collapsible tool call: "● Name(arg)      when" with a ⎿ result underneath.
+interface Props {
+  name: string;
+  arg?: string;
+  when?: string;
+  id?: string;
+  open?: boolean;
+  step?: boolean;
+  /** spinner text shown while this step "runs" during the intro */
+  verb?: string;
+  class?: string;
+}
+const { name, arg, when, id, open = true, step = true, verb, class: cls } = Astro.props;
+---
+
+<details class:list={['tool', cls]} open={open} id={id} data-step={step ? '' : undefined} data-verb={verb}>
+  <summary>
+    <h2 class="tool-head">
+      <span class="bullet" aria-hidden="true">●</span>
+      <span><span class="tool-name">{name}</span>{arg && <span class="tool-arg">({arg})</span>}</span>
+    </h2>
+    {when && <span class="tool-when">{when}</span>}
+  </summary>
+  <div class="result">
+    <slot />
+  </div>
+</details>

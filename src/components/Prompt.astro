@@ -1,0 +1,287 @@
+---
+import { profile } from '../data/profile';
+import { getPosts } from '../lib/posts';
+
+const posts = (await getPosts()).map((p) => ({
+  slug: p.id,
+  title: p.data.title,
+  date: p.data.date.toISOString().slice(0, 10),
+  draft: p.data.draft,
+}));
+const data = { email: profile.email, linkedin: profile.linkedin, github: profile.github, posts };
+---
+
+<div class="log" id="log" aria-live="polite"></div>
+
+<div class="prompt-wrap">
+  <form class="prompt" id="prompt-form" autocomplete="off">
+    <label for="cmd" aria-label="Command">&gt;</label>
+    <input
+      id="cmd"
+      name="cmd"
+      type="text"
+      spellcheck="false"
+      autocapitalize="off"
+      enterkeyhint="send"
+      placeholder='Try "/blog"'
+      role="combobox"
+      aria-autocomplete="list"
+      aria-expanded="false"
+      aria-controls="menu"
+    />
+  </form>
+  <ul class="menu" id="menu" role="listbox" aria-label="Commands" hidden></ul>
+  <div class="statusline" id="statusline">
+    <span id="status-hint">? for shortcuts</span>
+    <div class="chips" aria-label="Suggested commands">
+      <button type="button" data-run="/blog">/blog</button>
+      <button type="button" data-run="/contact">/contact</button>
+      <button type="button" data-run="/help">/help</button>
+    </div>
+  </div>
+</div>
+
+<script type="application/json" id="site-data" set:html={JSON.stringify(data)} />
+
+<script>
+  type Post = { slug: string; title: string; date: string; draft: boolean };
+  type Data = { email: string; linkedin: string; github: string; posts: Post[] };
+
+  const data: Data = JSON.parse(document.getElementById('site-data')!.textContent || '{}');
+  const log = document.getElementById('log')!;
+  const form = document.getElementById('prompt-form') as HTMLFormElement;
+  const input = document.getElementById('cmd') as HTMLInputElement;
+  // Lets the same script work when the site is served from a subfolder
+  const meta = (n: string) => document.querySelector<HTMLMetaElement>(`meta[name="${n}"]`)?.content;
+  const root = meta('site-root') ?? '/';
+  const idx = meta('site-index') ?? '';
+  const postUrl = (slug: string) => `${root}blog/${slug}/${idx}`;
+  const history: string[] = [];
+  let hIndex = -1;
+
+  // tiny element builder: h('p', {class:'x'}, 'text', childEl)
+  function h(tag: string, attrs: Record<string, string> = {}, ...kids: (Node | string)[]) {
+    const el = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    for (const k of kids) el.append(k);
+    return el;
+  }
+  const p = (...kids: (Node | string)[]) => h('p', {}, ...kids);
+  const cmd = (c: string) => h('span', { class: 'cmd' }, c);
+
+  function linkedinHandle(url: string) {
+    return url.replace(/^https?:\/\/(www\.)?linkedin\.com\//, '').replace(/\/$/, '');
+  }
+
+  // Slash commands, shown in the menu as you type "/"
+  const commands: [string, string][] = [
+    ['/blog', 'List blog posts'],
+    ['/contact', 'How to reach Kieran'],
+    ['/open', 'Open a post by name, e.g. /open agents'],
+    ['/theme', 'Switch theme: light, dark or system'],
+    ['/replay', 'Run the intro again'],
+    ['/clear', 'Clear this output'],
+    ['/help', 'Show commands'],
+  ];
+  const shortcuts: [string, string][] = [
+    ['/ for commands', 'type / anywhere to focus the prompt'],
+    ['↑ ↓ for history', 'recall earlier commands'],
+    ['tab to complete', 'accept the highlighted command'],
+    ['esc to close', 'close this menu or skip the intro'],
+  ];
+
+  function contactOut() {
+    const out = h('dl', { class: 'contact' });
+    out.append(h('dt', {}, 'email'), h('dd', {}, h('a', { href: `mailto:${data.email}` }, data.email)));
+    out.append(h('dt', {}, 'linkedin'), h('dd', {}, h('a', { href: data.linkedin, rel: 'me' }, linkedinHandle(data.linkedin))));
+    if (data.github) out.append(h('dt', {}, 'github'), h('dd', {}, h('a', { href: data.github, rel: 'me' }, data.github.replace(/^https?:\/\//, ''))));
+    return out;
+  }
+
+  function blogOut() {
+    if (!data.posts.length) return p('~/blog is empty. Nothing written yet.');
+    const ul = h('ul');
+    for (const post of data.posts) {
+      ul.append(
+        h('li', {},
+          h('span', { class: 'dim' }, post.date + '  '),
+          h('a', { href: postUrl(post.slug) }, post.title),
+          post.draft ? h('span', { class: 'badge' }, '  (draft)') : '',
+        ),
+      );
+    }
+    return ul;
+  }
+
+  function setTheme(t: string) {
+    const root = document.documentElement;
+    try {
+      if (t === 'system') localStorage.removeItem('theme');
+      else localStorage.setItem('theme', t);
+    } catch {}
+    if (t === 'system') delete root.dataset.theme;
+    else root.dataset.theme = t;
+  }
+
+  function run(raw: string): Node | null {
+    const line = raw.trim();
+    const lower = line.toLowerCase().replace(/\s+/g, ' ');
+    const [head, ...rest] = lower.split(' ');
+    const arg = rest.join(' ');
+
+    if (lower === 'help' || lower === '?' || lower === '/help') {
+      const ul = h('ul', { class: 'help' });
+      for (const [c, d] of commands) ul.append(h('li', {}, cmd(c), h('span', { class: 'dim' }, d)));
+      return ul;
+    }
+    if (['/blog', 'blog', 'ls', 'ls ~/blog', 'ls blog', 'cd blog', 'cd ~/blog'].includes(lower)) {
+      if (head === 'cd') { location.href = `${root}blog/${idx}`; return p('Changing directory…'); }
+      return blogOut();
+    }
+    if (['/contact', 'contact', 'hire', 'hire kieran', '/hire'].includes(lower)) return contactOut();
+    if (head === 'open' || head === '/open' || head === 'cat') {
+      const q = arg.replace(/^~?\/?blog\//, '').replace(/\.md$/, '');
+      if (q === 'cv.pdf' || q === 'cv') {
+        document.getElementById('experience')?.scrollIntoView({ behavior: 'smooth' });
+        return p('Scrolled up to the experience section.');
+      }
+      const match = data.posts.find((x) => x.slug === q || x.title.toLowerCase().includes(q));
+      if (q && match) { location.href = postUrl(match.slug); return p(`Opening ${match.slug}.md…`); }
+      return p(h('span', { class: 'warn' }, `No post matches "${arg}".`), ' Try ', cmd('/blog'), ' for the list.');
+    }
+    if (head === 'theme' || head === '/theme') {
+      if (['light', 'dark', 'system'].includes(arg)) { setTheme(arg); return p(`Theme set to ${arg}.`); }
+      return p('Usage: ', cmd('/theme light'), ', ', cmd('/theme dark'), ' or ', cmd('/theme system'), '.');
+    }
+    if (lower === 'replay' || lower === '/replay') {
+      window.dispatchEvent(new CustomEvent('session:replay'));
+      return null;
+    }
+    if (lower === 'whoami') return p('guest. Kieran is the other one.');
+    if (lower === 'pwd') return p('/home/kieran/london');
+    if (lower === 'date') return p(new Date().toLocaleString('en-GB', { timeZone: 'Europe/London', dateStyle: 'full', timeStyle: 'short' }) + ' in London');
+    if (head === 'sudo') return p(h('span', { class: 'warn' }, 'guest is not in the sudoers file.'), ' This incident will be reported.');
+    if (head === 'rm' || lower.includes('drop table') || lower.includes('force push') || lower.includes('push --force')) {
+      return p(h('span', { class: 'warn' }, 'Denied.'), ' Destructive commands need a human approver. Same rule the CI gates follow at work.');
+    }
+    if (['exit', 'quit', ':q', ':wq', 'logout'].includes(lower)) return p('The session stays open. Closing the tab works.');
+    if (head === 'vim' || head === 'emacs' || head === 'nano') return p('No editors on this host. Posts are written in Markdown elsewhere and shipped by CI.');
+    if (lower === 'hello' || lower === 'hi' || lower === 'hey') return p('Hello. Type ', cmd('/help'), ' to see what this prompt can do.');
+    return p(h('span', { class: 'warn' }, `command not found: ${head}`), '. Type ', cmd('/help'), ' for the list.');
+  }
+
+  function submit(raw: string) {
+    const line = raw.trim();
+    if (!line) return;
+    history.unshift(line);
+    hIndex = -1;
+    if (line.toLowerCase() === 'clear') { log.replaceChildren(); return; }
+    const turn = h('div', { class: 'turn' });
+    turn.append(h('p', { class: 'turn-user' }, h('span', { class: 'caret-char', 'aria-hidden': 'true' }, '>'), h('span', {}, line)));
+    const out = run(line);
+    if (out) turn.append(h('div', { class: 'out' }, out));
+    log.append(turn);
+    turn.scrollIntoView({ block: 'end', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  }
+
+  // ---- command menu ----
+  const menu = document.getElementById('menu')!;
+  const statusline = document.getElementById('statusline')!;
+  let matches: [string, string][] = [];
+  let sel = 0;
+  let mode: 'none' | 'commands' | 'shortcuts' = 'none';
+
+  function renderMenu() {
+    menu.replaceChildren();
+    const items = mode === 'shortcuts' ? shortcuts : matches;
+    items.forEach(([name, desc], i) => {
+      const li = h('li', { role: 'option', id: `opt-${i}`, 'aria-selected': String(mode === 'commands' && i === sel) },
+        h('span', { class: 'name' }, name), h('span', { class: 'desc' }, desc));
+      if (mode === 'commands') {
+        li.addEventListener('mousedown', (e) => { e.preventDefault(); choose(i); });
+      }
+      menu.append(li);
+    });
+    const open = items.length > 0 && mode !== 'none';
+    menu.hidden = !open;
+    statusline.hidden = open;
+    input.setAttribute('aria-expanded', String(open && mode === 'commands'));
+    if (open && mode === 'commands') input.setAttribute('aria-activedescendant', `opt-${sel}`);
+    else input.removeAttribute('aria-activedescendant');
+  }
+  function closeMenu() { mode = 'none'; matches = []; renderMenu(); }
+  function updateMenu() {
+    const v = input.value.toLowerCase();
+    if (v.startsWith('/') && !v.includes(' ')) {
+      matches = commands.filter(([c]) => c.startsWith(v));
+      mode = 'commands';
+      sel = Math.min(sel, Math.max(matches.length - 1, 0));
+    } else if (mode === 'commands') {
+      mode = 'none';
+    }
+    renderMenu();
+  }
+  function choose(i: number) {
+    const c = matches[i]?.[0];
+    if (!c) return;
+    const needsArg = c === '/open' || c === '/theme';
+    if (needsArg) { input.value = c + ' '; closeMenu(); input.focus(); return; }
+    input.value = '';
+    closeMenu();
+    submit(c);
+  }
+
+  input.addEventListener('input', () => { sel = 0; updateMenu(); });
+  input.addEventListener('blur', () => setTimeout(closeMenu, 100));
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (mode === 'commands' && matches.length && input.value.toLowerCase() !== matches[sel][0]) {
+      choose(sel);
+      return;
+    }
+    closeMenu();
+    submit(input.value);
+    input.value = '';
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (mode === 'commands' && matches.length) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); sel = (sel + 1) % matches.length; renderMenu(); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); sel = (sel - 1 + matches.length) % matches.length; renderMenu(); return; }
+      if (e.key === 'Tab') { e.preventDefault(); input.value = matches[sel][0]; updateMenu(); return; }
+    }
+    if (e.key === 'Escape' && mode !== 'none') { e.preventDefault(); closeMenu(); return; }
+    if (e.key === '?' && input.value === '') {
+      e.preventDefault();
+      mode = mode === 'shortcuts' ? 'none' : 'shortcuts';
+      renderMenu();
+      return;
+    }
+    if (mode === 'shortcuts' && e.key.length === 1) closeMenu();
+    if (e.key === 'ArrowUp' && history.length) {
+      e.preventDefault();
+      hIndex = Math.min(hIndex + 1, history.length - 1);
+      input.value = history[hIndex];
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      hIndex = Math.max(hIndex - 1, -1);
+      input.value = hIndex === -1 ? '' : history[hIndex];
+    }
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('[data-run]').forEach((b) =>
+    b.addEventListener('click', () => submit(b.dataset.run!)),
+  );
+
+  // "/" focuses the prompt from anywhere, like most dev tools
+  document.addEventListener('keydown', (e) => {
+    const t = e.target as HTMLElement;
+    if (e.key === '/' && !(t instanceof HTMLInputElement) && !(t instanceof HTMLTextAreaElement)) {
+      e.preventDefault();
+      input.focus();
+      input.value = '/';
+      updateMenu();
+    }
+  });
+</script>

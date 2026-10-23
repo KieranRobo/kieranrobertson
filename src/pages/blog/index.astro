@@ -1,0 +1,35 @@
+---
+import Base from '../../layouts/Base.astro';
+import ToolCall from '../../components/ToolCall.astro';
+import { getPosts, lsDate, sizeLabel, readMinutes } from '../../lib/posts';
+
+const posts = await getPosts();
+const total = posts.length;
+---
+
+<Base title="Blog" crumbs={[{ label: 'blog' }]} current="blog" description="Writing by Kieran Robertson on distributed systems, coding agents and developer tooling.">
+  <div class="session">
+    <p class="turn-user"><span class="caret-char" aria-hidden="true">&gt;</span><span>/blog</span></p>
+    <ToolCall name="Bash" arg="ls -lt ~/blog" step={false}>
+      <p class="dim">total {total}</p>
+      {total === 0 ? (
+        <p>Nothing here yet. Posts land in this directory as Markdown files.</p>
+      ) : (
+        <ul class="ls">
+          {posts.map((post) => (
+            <li>
+              <div class="ls-row">
+                <span class="perm">-rw-r--r--</span>
+                <span>{sizeLabel(post).padStart(5, ' ')}  {lsDate(post.data.date)} {post.data.date.getUTCFullYear()}</span>
+                <span class="fname">{post.id}.md{post.data.draft && <span class="badge">  (draft)</span>}</span>
+              </div>
+              <a class="ls-title" href={`/blog/${post.id}/`}>{post.data.title}</a>
+              <p class="ls-desc">{post.data.description} <span class="dim">{readMinutes(post)} min read.</span></p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </ToolCall>
+    <p class="cost">Subscribe with <a href="/rss.xml">RSS</a>.</p>
+  </div>
+</Base>

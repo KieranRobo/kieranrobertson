@@ -1,0 +1,238 @@
+---
+import Base from '../layouts/Base.astro';
+import ToolCall from '../components/ToolCall.astro';
+import Prompt from '../components/Prompt.astro';
+import { profile, plan, jobs, skills } from '../data/profile';
+import { getPosts, lsDate, sizeLabel } from '../lib/posts';
+
+const posts = (await getPosts()).slice(0, 5);
+const linkedinHandle = profile.linkedin.replace(/^https?:\/\/(www\.)?linkedin\.com\//, '').replace(/\/$/, '');
+const question = 'who is kieran?';
+---
+
+<Base current="home">
+  <section class="welcome" aria-labelledby="name">
+    <h1 id="name"><span class="star" aria-hidden="true">✻</span><span>{profile.name}</span></h1>
+    <div class="welcome-body">
+      <p>{profile.role} at {profile.company}</p>
+      <p class="welcome-lines dim">
+        <span><span class="cmdname">/help</span> for help, <span class="cmdname">/blog</span> for writing</span>
+      </p>
+      <p class="dim">cwd: /home/kieran/{profile.location.toLowerCase()}</p>
+    </div>
+  </section>
+
+  <div class="session" id="session">
+    <p class="turn-user">
+      <span class="caret-char" aria-hidden="true">&gt;</span>
+      <span id="question" data-text={question}>{question}</span>
+    </p>
+
+    <p class="thinking" data-step data-verb="Thinking">
+      <span class="glyph" aria-hidden="true">✻</span>
+      <span>{profile.thinking}</span>
+    </p>
+
+    <ToolCall name="Read" arg="cv.pdf" verb="Reading">
+      <p>Read <span class="bold">2</span> pages</p>
+      <p>{profile.summary}</p>
+    </ToolCall>
+
+    <ToolCall name="Update Todos" id="experience" verb="Planning">
+      <ul class="todos">
+        {plan.map((m) => (
+          <li class={m.done ? 'done' : 'now'}>
+            <span class="box" aria-hidden="true">{m.done ? '☒' : '☐'}</span>
+            <span><span class="what">{m.label}, {m.where}</span>{m.done ? <span class="sr-only"> (done)</span> : <span class="sr-only"> (in progress)</span>}</span>
+            <span class="when">{m.when}</span>
+          </li>
+        ))}
+      </ul>
+    </ToolCall>
+
+    {jobs.map((job, i) => (
+      <ToolCall name="Task" arg={job.id} when={job.when} verb={['Shipping', 'Paying out', 'Reminiscing'][i] ?? 'Working'}>
+        <p class="context"><span class="bold">{job.title}</span>, {job.company}. <span class="dim">{job.context}</span></p>
+        {job.metrics && (
+          <ul class="attrs" aria-label="Key figures">
+            {job.metrics.map((m) => (
+              <li><span class="k">{m.key}: </span><span class="v">{m.value}</span></li>
+            ))}
+          </ul>
+        )}
+        <ul class="points">
+          {job.points.map((pt) => <li>{pt}</li>)}
+        </ul>
+        <p class="stack">stack: {job.stack.join(', ')}</p>
+      </ToolCall>
+    ))}
+
+    <ToolCall name="Search" arg={'pattern: "skills", path: "cv.pdf"'} verb="Grepping">
+      <p>Found <span class="bold">{skills.length}</span> groups</p>
+      <div class="grep">
+        {skills.map((s) => (
+          <div>
+            <span class="match">{s.group}</span>
+            <span>{s.items.join(', ')}</span>
+          </div>
+        ))}
+      </div>
+    </ToolCall>
+
+    <ToolCall name="Bash" arg="ls -lt ~/blog" id="blog" verb="Listing">
+      {posts.length === 0 ? (
+        <p class="dim">total 0</p>
+      ) : (
+        <ul class="ls">
+          {posts.map((post) => (
+            <li>
+              <div class="ls-row">
+                <span class="perm">-rw-r--r--</span>
+                <span>{sizeLabel(post).padStart(5, ' ')}  {lsDate(post.data.date)}</span>
+                <span class="fname">{post.id}.md{post.data.draft && <span class="badge">  (draft)</span>}</span>
+              </div>
+              <a class="ls-title" href={`/blog/${post.id}/`}>{post.data.title}</a>
+              <p class="ls-desc">{post.data.description}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </ToolCall>
+
+    <div class="answer" data-step data-verb="Summarising" id="contact">
+      <span class="bullet" aria-hidden="true">●</span>
+      <div class="answer-body">
+        <h2 class="sr-only">Contact</h2>
+        <p>
+          Kieran is a senior software engineer in London. He has built payment systems that run at 300k requests a second, and now builds the workflows that let coding agents ship production code safely. Email is the quickest way to reach him.
+        </p>
+        <dl class="contact">
+          <dt>email</dt>
+          <dd>
+            <a href={`mailto:${profile.email}`} id="email-addr">{profile.email}</a>
+            <button class="copy" type="button" data-copy={profile.email}>copy</button>
+          </dd>
+          <dt>linkedin</dt>
+          <dd><a href={profile.linkedin} rel="me">{linkedinHandle}</a></dd>
+          {profile.github && (
+            <>
+              <dt>github</dt>
+              <dd><a href={profile.github} rel="me">{profile.github.replace(/^https?:\/\//, '')}</a></dd>
+            </>
+          )}
+        </dl>
+      </div>
+    </div>
+
+    <p class="cost" data-step data-verb="Wrapping up"><span class="star" aria-hidden="true">✻</span> Worked for 7 years</p>
+
+    <p class="spinner" id="spinner" hidden aria-hidden="true">
+      <span class="glyph" id="spinner-glyph">✻</span>
+      <span><span class="verb" id="spinner-verb">Thinking…</span> <span class="hint">(esc to interrupt)</span></span>
+    </p>
+  </div>
+
+  <Prompt />
+</Base>
+
+<script>
+  // Copy buttons
+  document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(btn.dataset.copy!);
+        btn.textContent = 'copied';
+      } catch {
+        const a = document.getElementById('email-addr');
+        if (a) {
+          const r = document.createRange();
+          r.selectNodeContents(a);
+          const s = getSelection();
+          s?.removeAllRanges();
+          s?.addRange(r);
+        }
+        btn.textContent = 'selected';
+      }
+      setTimeout(() => (btn.textContent = 'copy'), 1600);
+    });
+  });
+
+  // Intro playback: types the question, then streams each step in with a spinner.
+  // All content is in the HTML already; this only hides and reveals it. Esc, any key or a click skips.
+  const session = document.getElementById('session')!;
+  const q = document.getElementById('question')!;
+  const spinner = document.getElementById('spinner')!;
+  const glyphEl = document.getElementById('spinner-glyph')!;
+  const verbEl = document.getElementById('spinner-verb')!;
+  const hint = document.getElementById('status-hint');
+  const steps = Array.from(session.querySelectorAll<HTMLElement>('[data-step]'));
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const frames = ['·', '✢', '✳', '✶', '✻', '✽', '✻', '✶', '✳', '✢'];
+  let timers: number[] = [];
+  let spinTimer = 0;
+  let playing = false;
+
+  function finish() {
+    timers.forEach(clearTimeout);
+    timers = [];
+    clearInterval(spinTimer);
+    q.textContent = q.dataset.text!;
+    q.classList.remove('typing');
+    steps.forEach((s) => s.classList.remove('pending'));
+    session.classList.remove('playing');
+    spinner.hidden = true;
+    if (hint) hint.textContent = '? for shortcuts';
+    playing = false;
+    removeEventListener('keydown', skip, true);
+    removeEventListener('pointerdown', skip, true);
+  }
+  function skip(e: Event) {
+    if (!playing) return;
+    if (e instanceof KeyboardEvent && ['Shift', 'Meta', 'Control', 'Alt'].includes(e.key)) return;
+    finish();
+  }
+  function at(ms: number, fn: () => void) {
+    timers.push(window.setTimeout(fn, ms));
+  }
+
+  function play() {
+    if (reduce) return;
+    finish();
+    playing = true;
+    session.classList.add('playing');
+    if (hint) hint.textContent = 'esc to skip';
+    steps.forEach((s) => s.classList.add('pending'));
+    let f = 0;
+    spinTimer = window.setInterval(() => (glyphEl.textContent = frames[f++ % frames.length]), 110);
+    const text = q.dataset.text!;
+    q.textContent = '';
+    q.classList.add('typing');
+    let t = 300;
+    for (let i = 1; i <= text.length; i++) {
+      at(t, () => (q.textContent = text.slice(0, i)));
+      t += 40 + Math.random() * 40;
+    }
+    at(t, () => q.classList.remove('typing'));
+    t += 200;
+    steps.forEach((s) => {
+      at(t, () => {
+        verbEl.textContent = `${s.dataset.verb ?? 'Working'}…`;
+        spinner.hidden = false;
+      });
+      t += s.classList.contains('tool') ? 520 : 380;
+      at(t, () => {
+        spinner.hidden = true;
+        s.classList.remove('pending');
+      });
+      t += 60;
+    });
+    at(t, finish);
+    addEventListener('keydown', skip, true);
+    addEventListener('pointerdown', skip, true);
+  }
+
+  let seen = false;
+  try { seen = sessionStorage.getItem('intro-played') === '1'; sessionStorage.setItem('intro-played', '1'); } catch {}
+  if (!seen && scrollY < 40 && !location.hash) play();
+  addEventListener('session:replay', () => { scrollTo({ top: 0 }); play(); });
+</script>

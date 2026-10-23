@@ -1,0 +1,30 @@
+---
+import Base from '../layouts/Base.astro';
+---
+
+<Base title="Not found" crumbs={[{ label: '404' }]}>
+  <div class="session">
+    <p class="turn-user"><span class="caret-char" aria-hidden="true">&gt;</span><span>open this page</span></p>
+    <div class="tool">
+      <div class="tool-head">
+        <span class="bullet" aria-hidden="true" style="color: var(--warn)">●</span>
+        <span><span class="tool-name">Read</span><span class="tool-arg">(<span id="path">this path</span>)</span></span>
+      </div>
+      <div class="result">
+        <p><span class="badge">Error: file not found.</span> The link may be old, or the post may have moved.</p>
+      </div>
+    </div>
+    <div class="answer">
+      <span class="bullet" aria-hidden="true">●</span>
+      <div class="answer-body">
+        <h1 class="sr-only">Page not found</h1>
+        <p>Nothing lives at this address. Try <a href="/blog/">the blog</a> or go back to <a href="/">the homepage</a>.</p>
+      </div>
+    </div>
+  </div>
+</Base>
+
+<script>
+  const el = document.getElementById('path');
+  if (el) el.textContent = '~' + location.pathname;
+</script>

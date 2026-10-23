@@ -1,0 +1,63 @@
+---
+import { render } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import { getPosts, lineCount, longDate, isoDate, readMinutes, type Post } from '../../lib/posts';
+
+export async function getStaticPaths() {
+  const posts = await getPosts();
+  return posts.map((post) => ({ params: { slug: post.id }, props: { post } }));
+}
+
+const { post } = Astro.props as { post: Post };
+const { Content } = await render(post);
+const file = `${post.id}.md`;
+---
+
+<Base
+  title={post.data.title}
+  description={post.data.description}
+  crumbs={[{ label: 'blog', href: '/blog/' }, { label: file }]}
+  current="blog"
+  type="article"
+>
+  <div class="session read-call">
+    <p class="turn-user"><span class="caret-char" aria-hidden="true">&gt;</span><span>/open {post.id}</span></p>
+    <div class="tool">
+      <div class="tool-head">
+        <span class="bullet" aria-hidden="true">●</span>
+        <span><span class="tool-name">Read</span><span class="tool-arg">(~/blog/{file})</span></span>
+      </div>
+      <div class="result">
+        <p>Read <span class="bold">{lineCount(post)}</span> lines</p>
+      </div>
+    </div>
+  </div>
+
+  <article class="article">
+    <span class="bullet" aria-hidden="true">●</span>
+    <div class="article-inner">
+      <header class="article-head">
+        <h1>{post.data.title}</h1>
+        <p class="article-meta">
+          <span><time class="v" datetime={isoDate(post.data.date)}>{longDate(post.data.date)}</time></span>
+          <span>{readMinutes(post)} min read</span>
+          {post.data.tags.length > 0 && <span>{post.data.tags.map((t) => `#${t}`).join(' ')}</span>}
+          {post.data.draft && <span class="badge">draft</span>}
+        </p>
+      </header>
+      <div class="prose">
+        <Content />
+      </div>
+    </div>
+  </article>
+
+  <div class="session end-call">
+    <p class="turn-user"><span class="caret-char" aria-hidden="true">&gt;</span><span>what next?</span></p>
+    <div class="answer">
+      <span class="bullet" aria-hidden="true">●</span>
+      <div class="answer-body">
+        <p>Back to <a href="/blog/">all posts</a>, or <a href="/">the homepage</a>. Questions or corrections go to <a href="/#contact">Kieran directly</a>.</p>
+      </div>
+    </div>
+  </div>
+</Base>
